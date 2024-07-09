@@ -6,6 +6,7 @@ void SystemClock_Config(void);
 void GPIO_Init(void);
 void USART3_UART_Init(void);
 
+UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 int main(void) {
@@ -14,7 +15,9 @@ int main(void) {
     SystemClock_Config();
 
     GPIO_Init();
+    USART2_UART_Init();
     USART3_UART_Init();
+  
 
     const uint8_t BUF_SZ = 10;
     uint8_t rcv[BUF_SZ];
@@ -23,12 +26,18 @@ int main(void) {
 
     while (1) {
         /* Handle received data byte by byte */
+
+        // check if send data via uart2 -> from a board 
+        if (HAL_UART_Receive(&huart2, &rcv[idx], 1, HAL_MAX_DELAY) == HAL_OK){
+            HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
+        }
+        // check if send data via uart3 -> from pc and send it to another board via uart2
         if (HAL_UART_Receive(&huart3, &rcv[idx], 1, HAL_MAX_DELAY) == HAL_OK) {
             /* Toggle LED to signal character reception */
             HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
 
             /* Echo the received character back out */
-            HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
+            HAL_UART_Transmit(&huart2, &rcv[idx], 1, HAL_MAX_DELAY);
 
             /* Add a newline after each carriage return */
             if (rcv[idx] == '\r') {
@@ -76,6 +85,41 @@ void Error_Handler(void) {
     BSP_LED_On(LED2);
     while (1) {
         // Stay here
+    }
+}
+
+// USART2 initialization function
+void USART2_UART_Init(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    // Enable GPIO clocks for USART2 TX and RX
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+
+    // Enable USART2 clock
+    __HAL_RCC_USART2_CLK_ENABLE();
+
+    // Configure USART2 TX (PA2) and RX (PA3)
+    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
+    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    // Configure UART parameters
+    huart2.Instance = USART2;
+    huart2.Init.BaudRate = 115200;
+    huart2.Init.WordLength = UART_WORDLENGTH_8B;
+    huart2.Init.StopBits = UART_STOPBITS_1;
+    huart2.Init.Parity = UART_PARITY_NONE;
+    huart2.Init.Mode = UART_MODE_TX_RX;
+    huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+
+    if (HAL_UART_Init(&huart2) != HAL_OK) {
+        // Initialization Error
+        Error_Handler();
     }
 }
 
