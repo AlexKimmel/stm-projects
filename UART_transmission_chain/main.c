@@ -23,20 +23,15 @@ int main(void) {
     uint8_t rcv[BUF_SZ];
     const unsigned char NEWLINE = '\n';
     uint8_t idx = 0;
-
     while (1) {
         /* Handle received data byte by byte */
 
-        // check if send data via uart2 -> from a board 
-        if (HAL_UART_Receive(&huart2, &rcv[idx], 1, HAL_MAX_DELAY) == HAL_OK){
-            HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
-        }
         // check if send data via uart3 -> from pc and send it to another board via uart2
         if (HAL_UART_Receive(&huart3, &rcv[idx], 1, HAL_MAX_DELAY) == HAL_OK) {
             /* Toggle LED to signal character reception */
             HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
 
-            /* Echo the received character back out */
+            /* Send rcv to other board over uart2  */
             HAL_UART_Transmit(&huart2, &rcv[idx], 1, HAL_MAX_DELAY);
 
             /* Add a newline after each carriage return */
@@ -51,6 +46,24 @@ int main(void) {
                 idx++;
             }
         }
+
+        // check if send data via uart2 -> from a board 
+        if (HAL_UART_Receive(&huart2, &rcv[idx], 1, HAL_MAX_DELAY) == HAL_OK) {
+            
+            /* Send rcv to other board over uart3  */
+            HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
+            /* Toggle LED to signal character reception */
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+
+            /* We have received BUF_SZ characters, so reset */
+            if (idx == BUF_SZ - 1) {
+                idx = 0;
+            } else {
+                idx++;
+            }
+        }
+
+        
     }
 }
 
@@ -99,13 +112,13 @@ void USART2_UART_Init(void)
     // Enable USART2 clock
     __HAL_RCC_USART2_CLK_ENABLE();
 
-    // Configure USART2 TX (PA2) and RX (PA3)
-    GPIO_InitStruct.Pin = GPIO_PIN_2 | GPIO_PIN_3;
+    // Configure USART2 TX (PD5) and RX (PD6)
+    GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
     GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
     // Configure UART parameters
     huart2.Instance = USART2;
