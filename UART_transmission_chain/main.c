@@ -13,14 +13,25 @@ UART_HandleTypeDef huart3;
 #define BUF_SZ 10
 uint8_t rcv2[BUF_SZ];
 uint8_t rcv3[BUF_SZ];
+const unsigned char NEWLINE = '\n';
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART2) {
         HAL_UART_Transmit(&huart3, rcv2, 1, HAL_MAX_DELAY);
+
+        if (rcv2[0] == '\r') {
+                HAL_UART_Transmit(&huart3, &NEWLINE, 1, HAL_MAX_DELAY);
+        }
+        
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart2, rcv2, 1); // Restart the interrupt
     } else if (huart->Instance == USART3) {
         HAL_UART_Transmit(&huart2, rcv3, 1, HAL_MAX_DELAY);
+
+        if (rcv3[0] == '\r') {
+                HAL_UART_Transmit(&huart2, &NEWLINE, 1, HAL_MAX_DELAY);
+        }
+
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
     }
