@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_nucleo.h"
+#include "stm32h7xx_it.h"  // Include the interrupt handlers header
 
 void SystemClock_Config(void);
 void GPIO_Init(void);
@@ -10,66 +11,39 @@ void USART3_UART_Init(void);
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
+#define BUF_SZ 10
+uint8_t rcv2[BUF_SZ];
+uint8_t rcv3[BUF_SZ];
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART2) {
+        // Received a character from USART2, send it to USART3
+        HAL_UART_Transmit(&huart3, rcv2, 1, HAL_MAX_DELAY);
+        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14); // Toggle LED to signal character reception
+        // Restart the UART receive interrupt
+        HAL_UART_Receive_IT(&huart2, rcv2, 1);
+    } else if (huart->Instance == USART3) {
+        // Received a character from USART3, send it to USART2
+        HAL_UART_Transmit(&huart2, rcv3, 1, HAL_MAX_DELAY);
+        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
+        // Restart the UART receive interrupt
+        HAL_UART_Receive_IT(&huart3, rcv3, 1);
+    }
+}
+
 int main(void) {
-    HAL_MPU_Disable();
     HAL_Init();
     SystemClock_Config();
-
     GPIO_Init();
     USART2_UART_Init();
     USART3_UART_Init();
-  
 
-    const uint8_t BUF_SZ = 10;
-    uint8_t rcv[BUF_SZ];
-    const unsigned char NEWLINE = '\n';
-    uint8_t idx = 0;
+    // Start UART receive interrupts
+    HAL_UART_Receive_IT(&huart2, rcv2, 1);
+    HAL_UART_Receive_IT(&huart3, rcv3, 1);
+
     while (1) {
-        /* Handle received data byte by byte */
-
-        // check if send data via uart3 -> from pc and send it to another board via uart2
-        if (HAL_UART_Receive(&huart3, &rcv[idx], 1, 1) == HAL_OK) {
-            /* Toggle LED to signal character reception */
-            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
-
-            /* Send rcv to other board over uart2  */
-            HAL_UART_Transmit(&huart2, &rcv[idx], 1, HAL_MAX_DELAY);
-            //HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
-
-            /* Add a newline after each carriage return */
-            if (rcv[idx] == '\r') {
-                HAL_UART_Transmit(&huart2, &NEWLINE, 1, HAL_MAX_DELAY);
-            }
-
-            /* We have received BUF_SZ characters, so reset */
-            if (idx == BUF_SZ - 1) {
-                idx = 0;
-            } else {
-                idx++;
-            }
-        } 
-        
-        //check if send data via uart2 -> from a board 
-        if (HAL_UART_Receive(&huart2, &rcv[idx], 1, 1) == HAL_OK) {
-            
-            /* Send rcv to other board over uart3  */
-            HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
-
-            /* Toggle LED to signal character reception */
-            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-
-            /* Add a newline after each carriage return */
-            if (rcv[idx] == '\r') {
-                HAL_UART_Transmit(&huart3, &NEWLINE, 1, HAL_MAX_DELAY);
-            }
-
-            /* We have received BUF_SZ characters, so reset */
-            if (idx == BUF_SZ - 1) {
-                idx = 0;
-            } else {
-                idx++;
-            }
-        }
+        // Main loop does nothing, all work is done in interrupts
     }
 }
 
