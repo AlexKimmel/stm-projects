@@ -57,3 +57,7 @@ dkms.conf
 # clangd stuff
 .cache
 compile_commands.json
+
+
+# Mac Shit
+.DS_Store
