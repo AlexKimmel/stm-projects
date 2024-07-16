@@ -114,6 +114,10 @@ void USART2_UART_Init(void)
         // Initialization Error
         Error_Handler();
     }
+
+    // Enable USART2 interrupt
+    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(USART2_IRQn);
 }
 
 /* Initialize UART clock, pins, and parameters */
@@ -149,6 +153,10 @@ void USART3_UART_Init(void) {
         // Initialization Error
         Error_Handler();
     }
+
+    // Enable USART3 interrupt
+    HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(USART3_IRQn);
 }
 
 
