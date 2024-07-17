@@ -22,30 +22,39 @@ struct LinkedList {
     struct LinkedList* next;
     struct LinkedList* prev;
 };
+
 struct LinkedList* data_start = NULL;
 struct LinkedList* data_end = NULL;
 unsigned char transfer_finished = 'n';
 
 void insertAtEnd(uint8_t val) {
-   struct LinkedList *newItem = (struct LinkedList*) malloc(sizeof(struct LinkedList));
+    static uint8_t bitCounter = 0;
+    static struct LinkedList *newItem = NULL;
 
-   if (newItem == NULL) {
-        // Handle memory allocation failure
-        BSP_LED_Init(LED2);
-        BSP_LED_On(LED2);
+    if (bitCounter == 0) {
+        newItem = (struct LinkedList*) malloc(sizeof(struct LinkedList));
+        newItem->value = 0b00000000;
+        newItem->prev = data_end;
+        newItem->next = NULL;
+    }
+
+    if (val == '1') {
+        uint8_t tmp = 1 << (7 - bitCounter);
+        newItem->value = newItem->value | tmp;
+    }
+
+    if (bitCounter == 7) {
+        if (data_end != NULL) {
+            data_end->next = newItem;
+        } else {
+            data_start = newItem;
+        }
+        data_end = newItem; 
+        bitCounter = 0;
         return;
     }
 
-    newItem->value = val;
-    newItem->prev = data_end;
-    newItem->next = NULL;
-
-    if (data_end != NULL) {
-        data_end->next = newItem;
-    } else {
-        data_start = newItem;
-    }
-    data_end = newItem;
+    ++bitCounter;
 }
 
 void reTransferData() {
