@@ -36,8 +36,9 @@ char QuadruplicationDecode(uint32_t encodedData) {
         uint8_t bit3 = (encodedData >> (4 * i + 3)) & 0x01;
         uint8_t majorityBit = 0;
         if ((bit0 + bit1 + bit2 + bit3) > 2){
-            majorityBit = 1;} else if ((bit0 + bit1 + bit2 + bit3) < 2){
-            majorityBit = 0;} else {}; //to-do
+            majorityBit = 1;} 
+        else if ((bit0 + bit1 + bit2 + bit3) <= 2) {
+            majorityBit = 0;}
 
         decodedData |= (majorityBit << i);
     }
