@@ -22,25 +22,43 @@ struct LinkedList {
     struct LinkedList* next;
     struct LinkedList* prev;
 };
+
 struct LinkedList* data_start = NULL;
 struct LinkedList* data_end = NULL;
 unsigned char transfer_finished = 'n';
 
-uint16_t counter = 0;
+uint8_t counter = 0;
 
 void insertAtEnd(uint8_t val) {
-   struct LinkedList *newItem = (struct LinkedList*) malloc(sizeof(struct LinkedList));
-   ++counter;
-   newItem->value = val;
-   newItem->prev = data_end;
-   newItem->next = NULL;
+    static uint8_t bitCounter = 0;
+    static struct LinkedList *newItem = NULL;
 
-   if (data_end != NULL) {
-        data_end->next = newItem;
-    } else {
-        data_start = newItem;
+    if (bitCounter == 0) {
+        newItem = (struct LinkedList*) malloc(sizeof(struct LinkedList));
+        newItem->value = 0b00000000;
+        newItem->prev = data_end;
+        newItem->next = NULL;
     }
-    data_end = newItem;
+
+    if (val == '1') {
+        uint8_t tmp = 1 << (7 - bitCounter);
+        newItem->value |= tmp;
+    } else if (val != '0') {
+        return;
+    }
+
+    if (bitCounter == 7) {
+        if (data_end != NULL) {
+            data_end->next = newItem;
+        } else {
+            data_start = newItem;
+        }
+        data_end = newItem; 
+        bitCounter = 0;
+        return;
+    }
+
+    ++bitCounter;
 }
 
 void reTransferData() {
@@ -62,18 +80,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     } else if (huart->Instance == USART3) {
         // HAL_UART_Transmit(&huart2, rcv3, 1, HAL_MAX_DELAY);
 
-        // if (rcv3[0] == '\r') {
-        //     HAL_UART_Transmit(&huart2, &NEWLINE, 1, HAL_MAX_DELAY);
-        // }
-
-        if (rcv3[0] == 35) {
+        if (rcv3[0] == '\r') {
             transfer_finished = 'y';
-            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
-            HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
-            return;
+        } else {
+            insertAtEnd(rcv3[0]);
         }
-
-        insertAtEnd(rcv3[0]);
 
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
@@ -99,8 +110,8 @@ int main(void) {
         if (transfer_finished == 'y') {
             reTransferData();
         } else {
-            BSP_LED_Toggle(LED2);
             HAL_Delay(100); //Keep the CPU active
+            BSP_LED_Toggle(LED2);
         }
     }
 }

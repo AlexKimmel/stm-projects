@@ -26,11 +26,8 @@ struct LinkedList* data_start = NULL;
 struct LinkedList* data_end = NULL;
 unsigned char transfer_finished = 'n';
 
-uint16_t counter = 0;
-
 void insertAtEnd(uint8_t val) {
    struct LinkedList *newItem = (struct LinkedList*) malloc(sizeof(struct LinkedList));
-   ++counter;
    newItem->value = val;
    newItem->prev = data_end;
    newItem->next = NULL;
@@ -87,8 +84,6 @@ int main(void) {
     USART2_UART_Init();
     USART3_UART_Init();
 
-    BSP_LED_Init(LED2);
-
     data_start = NULL;
     data_end = NULL;
 
@@ -99,8 +94,7 @@ int main(void) {
         if (transfer_finished == 'y') {
             reTransferData();
         } else {
-            BSP_LED_Toggle(LED2);
-            HAL_Delay(100); //Keep the CPU active
+            HAL_Delay(1); //Keep the CPU active
         }
     }
 }

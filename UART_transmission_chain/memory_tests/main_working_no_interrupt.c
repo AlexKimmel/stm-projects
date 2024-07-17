@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <stdlib.h>
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_nucleo.h"
 
@@ -11,113 +10,83 @@ void USART3_UART_Init(void);
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
-#define BUF_SZ 10
-uint8_t rcv2[BUF_SZ];
-uint8_t rcv3[BUF_SZ];
-const unsigned char NEWLINE = '\n';
-
-// Linked List
-struct LinkedList {
-    uint8_t value;
-    struct LinkedList* next;
-    struct LinkedList* prev;
-};
-struct LinkedList* data_start = NULL;
-struct LinkedList* data_end = NULL;
-unsigned char transfer_finished = 'n';
-
-uint16_t counter = 0;
-
-void insertAtEnd(uint8_t val) {
-   struct LinkedList *newItem = (struct LinkedList*) malloc(sizeof(struct LinkedList));
-   ++counter;
-   newItem->value = val;
-   newItem->prev = data_end;
-   newItem->next = NULL;
-
-   if (data_end != NULL) {
-        data_end->next = newItem;
-    } else {
-        data_start = newItem;
-    }
-    data_end = newItem;
-}
-
-void reTransferData() {
-    struct LinkedList *currentItem = data_start;
-    while (currentItem != NULL) {
-        HAL_UART_Transmit(&huart2, &currentItem->value, 1, HAL_MAX_DELAY);
-        currentItem = currentItem->next;
-    }
-    transfer_finished = 'n';
-}
-// Linked List End
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance == USART2) {
-        HAL_UART_Transmit(&huart3, rcv2, 1, HAL_MAX_DELAY);
-
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14); // Toggle LED to signal character reception
-        HAL_UART_Receive_IT(&huart2, rcv2, 1); // Restart the interrupt
-    } else if (huart->Instance == USART3) {
-        // HAL_UART_Transmit(&huart2, rcv3, 1, HAL_MAX_DELAY);
-
-        // if (rcv3[0] == '\r') {
-        //     HAL_UART_Transmit(&huart2, &NEWLINE, 1, HAL_MAX_DELAY);
-        // }
-
-        if (rcv3[0] == 35) {
-            transfer_finished = 'y';
-            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
-            HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
-            return;
-        }
-
-        insertAtEnd(rcv3[0]);
-
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
-        HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
-    }
-}
-
 int main(void) {
+    HAL_MPU_Disable();
     HAL_Init();
     SystemClock_Config();
+
     GPIO_Init();
     USART2_UART_Init();
     USART3_UART_Init();
+  
 
-    BSP_LED_Init(LED2);
-
-    data_start = NULL;
-    data_end = NULL;
-
-    HAL_UART_Receive_IT(&huart2, rcv2, 1); // Start UART receive interrupt
-    HAL_UART_Receive_IT(&huart3, rcv3, 1); // Start UART receive interrupt
-
+    const uint8_t BUF_SZ = 10;
+    uint8_t rcv[BUF_SZ];
+    const unsigned char NEWLINE = '\n';
+    uint8_t idx = 0;
     while (1) {
-        if (transfer_finished == 'y') {
-            reTransferData();
-        } else {
-            BSP_LED_Toggle(LED2);
-            HAL_Delay(100); //Keep the CPU active
+        /* Handle received data byte by byte */
+
+        // check if send data via uart3 -> from pc and send it to another board via uart2
+        if (HAL_UART_Receive(&huart3, &rcv[idx], 1, 1) == HAL_OK) {
+            /* Toggle LED to signal character reception */
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+
+            /* Send rcv to other board over uart2  */
+            HAL_UART_Transmit(&huart2, &rcv[idx], 1, HAL_MAX_DELAY);
+            //HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
+
+            /* Add a newline after each carriage return */
+            if (rcv[idx] == '\r') {
+                HAL_UART_Transmit(&huart2, &NEWLINE, 1, HAL_MAX_DELAY);
+            }
+
+            /* We have received BUF_SZ characters, so reset */
+            if (idx == BUF_SZ - 1) {
+                idx = 0;
+            } else {
+                idx++;
+            }
+        } 
+        
+        //check if send data via uart2 -> from a board 
+        if (HAL_UART_Receive(&huart2, &rcv[idx], 1, 1) == HAL_OK) {
+            
+            /* Send rcv to other board over uart3  */
+            HAL_UART_Transmit(&huart3, &rcv[idx], 1, HAL_MAX_DELAY);
+
+            /* Toggle LED to signal character reception */
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+
+            /* Add a newline after each carriage return */
+            if (rcv[idx] == '\r') {
+                HAL_UART_Transmit(&huart3, &NEWLINE, 1, HAL_MAX_DELAY);
+            }
+
+            /* We have received BUF_SZ characters, so reset */
+            if (idx == BUF_SZ - 1) {
+                idx = 0;
+            } else {
+                idx++;
+            }
         }
     }
 }
 
-// Interrupt Handlers
-void USART2_IRQHandler(void) {
-    HAL_UART_IRQHandler(&huart2);
-}
-
-void USART3_IRQHandler(void) {
-    HAL_UART_IRQHandler(&huart3);
-}
-
-void SysTick_Handler(void) {
+/*
+ * SysTick interrupt handler, needed for delays
+ *
+ * By default, an interrupt is generated every 1ms by the SysTick timer, which
+ * calls this function. The HAL_delay() function checks a global variable to see
+ * if the ms value passed to it has been reached. Here we increment that
+ * variable by 1. Without this, the delay will just be an infinite loop.
+ */
+void SysTick_Handler(void)
+{
     HAL_IncTick();
 }
 
+/* Initialize GPIO B pins 0 and 14 (for LEDs 1 and 3) */
 void GPIO_Init(void) {
     __HAL_RCC_GPIOB_CLK_ENABLE();
 
@@ -129,6 +98,7 @@ void GPIO_Init(void) {
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
+/* Custom error handler, turns on the orange LED and loops infinitely */
 void Error_Handler(void) {
     BSP_LED_Init(LED2);
     BSP_LED_On(LED2);
@@ -137,12 +107,18 @@ void Error_Handler(void) {
     }
 }
 
-void USART2_UART_Init(void) {
+// USART2 initialization function
+void USART2_UART_Init(void)
+{
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
+    // Enable GPIO clocks for USART2 TX and RX
     __HAL_RCC_GPIOD_CLK_ENABLE();
+
+    // Enable USART2 clock
     __HAL_RCC_USART2_CLK_ENABLE();
 
+    // Configure USART2 TX (PD5) and RX (PD6)
     GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_6;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
@@ -150,6 +126,7 @@ void USART2_UART_Init(void) {
     GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+    // Configure UART parameters
     huart2.Instance = USART2;
     huart2.Init.BaudRate = 115200;
     huart2.Init.WordLength = UART_WORDLENGTH_8B;
@@ -160,19 +137,23 @@ void USART2_UART_Init(void) {
     huart2.Init.OverSampling = UART_OVERSAMPLING_16;
 
     if (HAL_UART_Init(&huart2) != HAL_OK) {
+        // Initialization Error
         Error_Handler();
     }
-
-    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART2_IRQn);
 }
 
+/* Initialize UART clock, pins, and parameters */
 void USART3_UART_Init(void) {
+    RCC_PeriphCLKInitTypeDef RCC_PeriphClkInit;
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
+    // Enable GPIO clocks for USART3 TX and RX
     __HAL_RCC_GPIOD_CLK_ENABLE();
+
+    // Enable USART3 clock
     __HAL_RCC_USART3_CLK_ENABLE();
 
+    // Configure USART3 TX (PD8) and RX (PD9)
     GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_PULLUP;
@@ -180,6 +161,7 @@ void USART3_UART_Init(void) {
     GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+    // Configure UART parameters
     huart3.Instance = USART3;
     huart3.Init.BaudRate = 115200;
     huart3.Init.WordLength = UART_WORDLENGTH_8B;
@@ -190,23 +172,30 @@ void USART3_UART_Init(void) {
     huart3.Init.OverSampling = UART_OVERSAMPLING_16;
 
     if (HAL_UART_Init(&huart3) != HAL_OK) {
+        // Initialization Error
         Error_Handler();
     }
-
-    HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART3_IRQn);
 }
 
-void SystemClock_Config(void) {
+
+/* Clock setup, generated by CubeMX */
+void SystemClock_Config(void)
+{
     RCC_ClkInitTypeDef RCC_ClkInitStruct;
     RCC_OscInitTypeDef RCC_OscInitStruct;
     HAL_StatusTypeDef ret = HAL_OK;
 
+    /*!< Supply configuration update enable */
     HAL_PWREx_ConfigSupply(PWR_LDO_SUPPLY);
+
+    /* The voltage scaling allows optimizing the power consumption when the device is
+       clocked below the maximum system frequency, to update the voltage scaling value
+       regarding system frequency refer to product datasheet.  */
     __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-    while (!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
+    while(!__HAL_PWR_GET_FLAG(PWR_FLAG_VOSRDY)) {}
 
+    /* Enable HSE Oscillator and activate PLL with HSE as source */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
     RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
     RCC_OscInitStruct.HSIState = RCC_HSI_OFF;
@@ -224,12 +213,15 @@ void SystemClock_Config(void) {
     RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
     RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_1;
     ret = HAL_RCC_OscConfig(&RCC_OscInitStruct);
-    if (ret != HAL_OK) {
-        Error_Handler();
+    if(ret != HAL_OK)
+    {
+      Error_Handler();
     }
 
+    /* Select PLL as system clock source and configure  bus clocks dividers */
     RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_D1PCLK1 | RCC_CLOCKTYPE_PCLK1 | \
                                    RCC_CLOCKTYPE_PCLK2  | RCC_CLOCKTYPE_D3PCLK1);
+
     RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
     RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
     RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV2;
@@ -238,11 +230,17 @@ void SystemClock_Config(void) {
     RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
     RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV2;
     ret = HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4);
-    if (ret != HAL_OK) {
-        Error_Handler();
+    if(ret != HAL_OK)
+    {
+      Error_Handler();
     }
 
-    __HAL_RCC_CSI_ENABLE();
-    __HAL_RCC_SYSCFG_CLK_ENABLE();
+    /* Activate CSI clock mandatory for I/O Compensation Cell */
+    __HAL_RCC_CSI_ENABLE() ;
+
+    /* Enable SYSCFG clock mandatory for I/O Compensation Cell */
+    __HAL_RCC_SYSCFG_CLK_ENABLE() ;
+
+    /* Enables the I/O Compensation Cell */
     HAL_EnableCompensationCell();
 }
