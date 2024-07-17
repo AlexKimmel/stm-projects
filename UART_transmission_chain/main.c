@@ -11,7 +11,7 @@ void USART3_UART_Init(void);
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
-#define BUF_SZ 10
+#define BUF_SZ 100
 uint8_t rcv2[BUF_SZ];
 uint8_t rcv3[BUF_SZ];
 const unsigned char NEWLINE = '\n';
@@ -28,11 +28,19 @@ unsigned char transfer_finished = 'n';
 
 void insertAtEnd(uint8_t val) {
    struct LinkedList *newItem = (struct LinkedList*) malloc(sizeof(struct LinkedList));
-   newItem->value = val;
-   newItem->prev = data_end;
-   newItem->next = NULL;
 
-   if (data_end != NULL) {
+   if (newItem == NULL) {
+        // Handle memory allocation failure
+        BSP_LED_Init(LED2);
+        BSP_LED_On(LED2);
+        return;
+    }
+
+    newItem->value = val;
+    newItem->prev = data_end;
+    newItem->next = NULL;
+
+    if (data_end != NULL) {
         data_end->next = newItem;
     } else {
         data_start = newItem;
@@ -59,21 +67,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     } else if (huart->Instance == USART3) {
         // HAL_UART_Transmit(&huart2, rcv3, 1, HAL_MAX_DELAY);
 
-        // if (rcv3[0] == '\r') {
-        //     HAL_UART_Transmit(&huart2, &NEWLINE, 1, HAL_MAX_DELAY);
-        // }
-
-        if (rcv3[0] == 35) {
+        if (rcv3[0] == '\r') {
             transfer_finished = 'y';
             HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
             HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
             return;
+        } else {
+            insertAtEnd(rcv3[0]);
+            HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
+            HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
         }
-
-        insertAtEnd(rcv3[0]);
-
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
-        HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
     }
 }
 
@@ -83,6 +86,8 @@ int main(void) {
     GPIO_Init();
     USART2_UART_Init();
     USART3_UART_Init();
+
+    BSP_LED_Init(LED2);
 
     data_start = NULL;
     data_end = NULL;
@@ -94,7 +99,8 @@ int main(void) {
         if (transfer_finished == 'y') {
             reTransferData();
         } else {
-            HAL_Delay(1); //Keep the CPU active
+            HAL_Delay(100); //Keep the CPU active
+            BSP_LED_Toggle(LED2);
         }
     }
 }
