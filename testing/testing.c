@@ -2,6 +2,14 @@
 #include <string.h>
 #include <stdint.h>
 
+// Function to get the checksum of a char array 
+unsigned char checksum (unsigned char *ptr, size_t sz) {
+    unsigned char chk = 0;
+    while (sz-- != 0)
+        chk -= *ptr++;
+    return chk;
+}
+
 
 // Function to encode data using triplication
 uint32_t QuadruplicationEncode(char data) {
