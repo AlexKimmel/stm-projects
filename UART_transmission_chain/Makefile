@@ -58,7 +58,7 @@ clean:
 # when flashing .bin, the start address is needed, because
 # unlike the .elf, it does not contain that information
 flash: $(PROJECT_NAME).bin
-	/Users/paulhain/Downloads/xpack-openocd-0.12.0-3/bin/openocd $(OPENOCD_FLAGS) -c "program $(PROJECT_NAME).bin 0x08000000 verify reset exit"
+	/Users/alexkimmel/Uni/Raumfahrt/xpack-openocd-0.12.0-3/bin/openocd $(OPENOCD_FLAGS) -c "program $(PROJECT_NAME).bin 0x08000000 verify reset exit"
 
 # opens minicom for UART/serial input/output
 serial:

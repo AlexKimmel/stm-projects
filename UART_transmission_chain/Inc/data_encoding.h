@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include "linkedList.h"
+#include "stm32h7xx_hal.h"
+#include "stm32h7xx_nucleo.h"
+#pragma once 
 
 // Function to get the checksum of a char array 
 unsigned char checksum (unsigned char *ptr, size_t sz) {
@@ -10,18 +14,24 @@ unsigned char checksum (unsigned char *ptr, size_t sz) {
     return chk;
 }
 
-
 // Function to encode data using triplication
-uint32_t QuadruplicationEncode(char data) {
+void QuadruplicationEncode(struct LinkedList *data) {
+    struct LinkedList *tmpPointer = data;
     uint32_t encodedData = 0;
+    uint8_t value = data->value;
+    data->value = 0;
 
     // Triplicate each bit
     for (int i = 0; i < 8; i++) {
-        uint8_t bit = (data >> i) & 0x01;
+        uint8_t bit = (value >> i) & 0x01;
         encodedData |= (bit << (4 * i)) | (bit << (4 * i + 1)) | (bit << (4 * i + 2)) | (bit << (4 * i + 3));
     }
-
-    return encodedData;
+    for (int i = 0; i < 4; i++) {
+        uint8_t tmp = (value >> (i * 8)) & 0xFF;
+        if (i == 0) {data->value;}
+        else{insertInbetween(tmpPointer, tmp);}
+        tmpPointer = tmpPointer->next;
+    }
 }
 
 // Function to decode data using triplication
@@ -56,17 +66,3 @@ void printBits(uint32_t num) {
     putchar('\n');
 }
 
-
-
-int main() {
-     char data = 'a';
-
-
-
-    uint32_t encoded = QuadruplicationEncode(data);
-    char decode = QuadruplicationDecode(encoded);
-    printBits(encoded);
-    printBits(decode);
-
-    return 0;
-}
