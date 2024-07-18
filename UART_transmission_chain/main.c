@@ -3,6 +3,7 @@
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_nucleo.h"
 #include "linkedList.h"
+#include "data_encoding.h"
 #pragma once
 
 void SystemClock_Config(void);
@@ -24,11 +25,23 @@ unsigned char transfer_finished = 'n';
 
 uint8_t counter = 0;
 
-// Linked List End
+static uint8_t count = 0;
+static uint8_t output[4] = {0, 0, 0, 0};
+
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART2) {
-        HAL_UART_Transmit(&huart3, rcv2, 1, HAL_MAX_DELAY);
+        output[count] = rcv2[0];
+        count += 1;
+        if (count > 3) {
+            uint8_t decoded = QuadruplicationDecode(output);
+            HAL_UART_Transmit(&huart3, &decoded, 1, HAL_MAX_DELAY);
+            for (size_t i = 0; i < count; i++)
+            {
+                output[i] = 0;
+            }
+            count = 0;
+        }
 
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart2, rcv2, 1); // Restart the interrupt
@@ -63,7 +76,14 @@ int main(void) {
 
     while (1) {
         if (transfer_finished == 'y') {
+            struct LinkedList *tmp = data_end;
+            
+            while (tmp != NULL) {
+                QuadruplicationEncode(tmp);
+                tmp = tmp->prev;
+            }
             reTransferData(data_start, &huart2);
+            
             transfer_finished = 'n';
         } else {
             HAL_Delay(100); //Keep the CPU active

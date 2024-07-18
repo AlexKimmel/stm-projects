@@ -9,6 +9,24 @@ struct LinkedList {
     struct LinkedList* prev;
 };
 
+void insertInbetween(struct LinkedList** dataPtr, uint8_t value) {
+    struct LinkedList* inbetween = (struct LinkedList*)malloc(sizeof(struct LinkedList));
+    if (inbetween == NULL) {
+
+    }
+
+    inbetween->value = value;
+    inbetween->next = (*dataPtr)->next;
+    inbetween->prev = *dataPtr;
+
+    (*dataPtr)->next = inbetween;
+
+    if (inbetween->next != NULL) {
+        inbetween->next->prev = inbetween;
+    }
+}
+
+
 void insertAtEnd(uint8_t val, struct LinkedList** data_start, struct LinkedList** data_end) {
     static uint8_t bitCounter = 0;
     static uint8_t newValue = 0b00000000;

@@ -17,52 +17,62 @@ unsigned char checksum (unsigned char *ptr, size_t sz) {
 // Function to encode data using triplication
 void QuadruplicationEncode(struct LinkedList *data) {
     struct LinkedList *tmpPointer = data;
-    uint32_t encodedData = 0;
     uint8_t value = data->value;
-    data->value = 0;
 
-    // Triplicate each bit
+    uint8_t encodedData[4] = {0, 0, 0, 0};
+
+    // Quadruplicate each bit
     for (int i = 0; i < 8; i++) {
-        uint8_t bit = (value >> i) & 0x01;
-        encodedData |= (bit << (4 * i)) | (bit << (4 * i + 1)) | (bit << (4 * i + 2)) | (bit << (4 * i + 3));
+        uint8_t bit = (value >> (7 - i)) & 0x01;
+        encodedData[i / 2] |= (bit << (7 - 4 * (i % 2))) | (bit << (6 - 4 * (i % 2))) | (bit << (5 - 4 * (i % 2))) | (bit << (4 - 4 * (i % 2)));
     }
-    for (int i = 0; i < 4; i++) {
-        uint8_t tmp = (value >> (i * 8)) & 0xFF;
-        if (i == 0) {data->value;}
-        else{insertInbetween(tmpPointer, tmp);}
+
+    // Assign the encoded bytes to the linked list
+    data->value = encodedData[0];
+    for (int i = 1; i < 4; i++) {
+        insertInbetween(&tmpPointer, encodedData[i]);
         tmpPointer = tmpPointer->next;
     }
 }
 
+// uint8_t QuadruplicationDecode(struct LinkedList *data) {
+//     uint8_t decodedValue = 0;
+//     struct LinkedList *tmpPointer = data;
+
+//     for (int i = 0; i < 8; i++) {
+//         uint8_t bit1 = (tmpPointer->value >> (7 - 4 * (i % 2))) & 0x01;
+//         uint8_t bit2 = (tmpPointer->value >> (6 - 4 * (i % 2))) & 0x01;
+//         uint8_t bit3 = (tmpPointer->value >> (5 - 4 * (i % 2))) & 0x01;
+//         uint8_t bit4 = (tmpPointer->value >> (4 - 4 * (i % 2))) & 0x01;
+
+//         uint8_t majorityBit = (bit1 + bit2 + bit3 + bit4) >= 2 ? 1 : 0;
+
+//         decodedValue |= (majorityBit << (7 - i));
+
+//         if (i % 2 == 1) {
+//             tmpPointer = tmpPointer->next;
+//         }
+//     }
+
+//     return decodedValue;
+// }
+
 // Function to decode data using triplication
-char QuadruplicationDecode(uint32_t encodedData) {
-    char decodedData = 0;
+uint8_t QuadruplicationDecode(uint8_t *encodedData) {
+    uint8_t decodedData = 0;
 
-    // Use majority voting for each triplicated bit
+    // Use majority voting for each quadruplicated bit
     for (int i = 0; i < 8; i++) {
-        uint8_t bit0 = (encodedData >> (4 * i)) & 0x01;
-        uint8_t bit1 = (encodedData >> (4 * i + 1)) & 0x01;
-        uint8_t bit2 = (encodedData >> (4 * i + 2)) & 0x01;
-        uint8_t bit3 = (encodedData >> (4 * i + 3)) & 0x01;
-        uint8_t majorityBit = 0;
-        if ((bit0 + bit1 + bit2 + bit3) > 2){
-            majorityBit = 1;} 
-        else if ((bit0 + bit1 + bit2 + bit3) <= 2) {
-            majorityBit = 0;}
+        uint8_t bit0 = (encodedData[i / 2] >> (7 - 4 * (i % 2))) & 0x01;
+        uint8_t bit1 = (encodedData[i / 2] >> (6 - 4 * (i % 2))) & 0x01;
+        uint8_t bit2 = (encodedData[i / 2] >> (5 - 4 * (i % 2))) & 0x01;
+        uint8_t bit3 = (encodedData[i / 2] >> (4 - 4 * (i % 2))) & 0x01;
 
-        decodedData |= (majorityBit << i);
+        uint8_t majorityBit = (bit0 + bit1 + bit2 + bit3) >= 2 ? 1 : 0;
+
+        decodedData |= (majorityBit << (7 - i));
     }
 
     return decodedData;
-}
-
-void printBits(uint32_t num) {
-    for (int bit = 31; bit >= 0; bit--) {
-        putchar((num & (1 << bit)) ? '1' : '0');
-        if (bit % 8 == 0) { // Optional: Add a space every 8 bits for readability
-            putchar(' ');
-        }
-    }
-    putchar('\n');
 }
 
