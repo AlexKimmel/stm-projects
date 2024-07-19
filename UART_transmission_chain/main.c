@@ -19,31 +19,21 @@ uint8_t rcv3[BUF_SZ];
 const unsigned char NEWLINE = '\n';
 const unsigned char SPACE = ' ';
 
-uint8_t sendBufferA[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-uint8_t sendBufferB[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t bufferA[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t bufferB[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-uint8_t receiveBufferA[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-uint8_t receiveBufferB[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t transmitting = 0; // Global flag for transmission (1 = transmitting, 0 = not transmitting)
 
-uint8_t transmitting = 0; // Global flag for transmission
-
-void clearSendBuffer(char buffer) {
+void clearbufferABuffer(char buffer) {
     if (buffer == 'A') {
-        memset(sendBufferA, 0, sizeof(sendBufferA));
+        memset(bufferA, 0, sizeof(bufferA));
     } else {
-        memset(sendBufferB, 0, sizeof(sendBufferB));
+        memset(bufferB, 0, sizeof(bufferB));
     }
 }
 
-void clearReceiveBuffer(char buffer) {
-    if (buffer == 'A') {
-        memset(receiveBufferA, 0, sizeof(receiveBufferA));
-    } else {
-        memset(receiveBufferB, 0, sizeof(receiveBufferB));
-    }
-}
-
-void singularizeAndSend(uint8_t data) {
+// Decoder for the received data 
+void singularizeAndbufferA(uint8_t data) {
     uint8_t counterOne = 0;
     uint8_t counterZero = 0;
     static uint8_t binaryCounter = 0;
@@ -70,6 +60,7 @@ void singularizeAndSend(uint8_t data) {
     }
 }
 
+// Encoder for the sent data
 void quadrupleAndTransmit(uint8_t val) {
     static uint8_t counterA = 0;
     static uint8_t counterB = 0;
@@ -80,7 +71,7 @@ void quadrupleAndTransmit(uint8_t val) {
         uint8_t tmp = (val == '1') ? (0b00001111 << bitPosition) : 0;
 
         if (activeBuffer == 'A') {
-            sendBufferA[counterA / 2] |= tmp;
+            bufferA[counterA / 2] |= tmp;
             ++counterA;
             if (counterA >= 16) {
                 activeBuffer = 'B';
@@ -88,7 +79,7 @@ void quadrupleAndTransmit(uint8_t val) {
                 transmitting = 1; // Start transmitting
             }
         } else {
-            sendBufferB[counterB / 2] |= tmp;
+            bufferB[counterB / 2] |= tmp;
             ++counterB;
             if (counterB >= 16) {
                 activeBuffer = 'A';
@@ -100,57 +91,58 @@ void quadrupleAndTransmit(uint8_t val) {
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance == USART2) {
-        singularizeAndSend(rcv2[0]);
+    if (huart->Instance == USART2) {    // receive via USART2 (from other Board)
+        singularizeAndbufferA(rcv2[0]);
 
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart2, rcv2, 1); // Restart the interrupt
-    } else if (huart->Instance == USART3) {
+    } else if (huart->Instance == USART3) {     // receive via USART3 (from Laptop)
         quadrupleAndTransmit(rcv3[0]);
+
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
     }
 }
 
 int main(void) {
+    // Service inilizations
     HAL_Init();
     SystemClock_Config();
     GPIO_Init();
     USART2_UART_Init();
     USART3_UART_Init();
-
     BSP_LED_Init(LED2);
 
-    HAL_UART_Receive_IT(&huart2, rcv2, 1); // Start UART receive interrupt
-    HAL_UART_Receive_IT(&huart3, rcv3, 1); // Start UART receive interrupt
+    HAL_UART_Receive_IT(&huart2, rcv2, 1);  // Start UART receive interrupt
+    HAL_UART_Receive_IT(&huart3, rcv3, 1);  // Start UART receive interrupt
 
     uint8_t bufferA_index = 0;
     uint8_t bufferB_index = 0;
     char currentBuffer = 'A';
 
     while (1) {
-        BSP_LED_On(LED2);
-        //HAL_Delay(100); // Keep the CPU active
+        BSP_LED_On(LED2); // Keep the CPU active by keeping the orange LED on
 
-        if (transmitting) {
-            if (currentBuffer == 'A' && bufferA_index < 8) {
-                HAL_UART_Transmit(&huart2, &sendBufferA[bufferA_index++], 1, HAL_MAX_DELAY);
-                HAL_Delay(1); // 1ms delay between bytes
-                if (bufferA_index >= 8) {
-                    bufferA_index = 0;
-                    currentBuffer = 'B';
-                    clearSendBuffer('A');
-                    transmitting = 0;
-                }
-            } else if (currentBuffer == 'B' && bufferB_index < 8) {
-                HAL_UART_Transmit(&huart2, &sendBufferB[bufferB_index++], 1, HAL_MAX_DELAY);
-                HAL_Delay(1); // 1ms delay between bytes
-                if (bufferB_index >= 8) {
-                    bufferB_index = 0;
-                    currentBuffer = 'A';
-                    clearSendBuffer('B');
-                    transmitting = 0;
-                }
+        if (!transmitting) {
+            continue;
+        }
+        if (currentBuffer == 'A' && bufferA_index < 8) {            // Transmits contents from buffer A
+            HAL_UART_Transmit(&huart2, &bufferA[bufferA_index++], 1, HAL_MAX_DELAY);
+            HAL_Delay(1);
+            if (bufferA_index >= 8) {   // Switches and resets the buffer
+                bufferA_index = 0;
+                currentBuffer = 'B';
+                clearbufferABuffer('A');
+                transmitting = 0;
+            }
+        } else if (currentBuffer == 'B' && bufferB_index < 8) {     // Transmits contents from buffer B
+            HAL_UART_Transmit(&huart2, &bufferB[bufferB_index++], 1, HAL_MAX_DELAY);
+            HAL_Delay(1);
+            if (bufferB_index >= 8) {   // Switches and resets the buffer
+                bufferB_index = 0;
+                currentBuffer = 'A';
+                clearbufferABuffer('B');
+                transmitting = 0;
             }
         }
     }
@@ -165,6 +157,7 @@ void USART3_IRQHandler(void) {
     HAL_UART_IRQHandler(&huart3);
 }
 
+// Not our code (init functions from the examples)
 void SysTick_Handler(void) {
     HAL_IncTick();
 }
@@ -214,9 +207,9 @@ void USART2_UART_Init(void) {
         Error_Handler();
     }
 
-    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART2_IRQn);
-}
+    HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);    // Sets the priority of the Interrupt
+    HAL_NVIC_EnableIRQ(USART2_IRQn);            // Enables the Interrupt
+}   
 
 void USART3_UART_Init(void) {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -244,8 +237,8 @@ void USART3_UART_Init(void) {
         Error_Handler();
     }
 
-    HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
-    HAL_NVIC_EnableIRQ(USART3_IRQn);
+    HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);    // Sets the priority of the Interrupt
+    HAL_NVIC_EnableIRQ(USART3_IRQn);            // Enables the Interrupt
 }
 
 void SystemClock_Config(void) {
