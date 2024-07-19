@@ -1,10 +1,9 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
+#include <string.h>
 #include "stm32h7xx_hal.h"
 #include "stm32h7xx_nucleo.h"
-#include "linkedList.h"
-#include "data_encoding.h"
-#pragma once
 
 void SystemClock_Config(void);
 void GPIO_Init(void);
@@ -18,42 +17,96 @@ UART_HandleTypeDef huart3;
 uint8_t rcv2[BUF_SZ];
 uint8_t rcv3[BUF_SZ];
 const unsigned char NEWLINE = '\n';
+const unsigned char SPACE = ' ';
 
-struct LinkedList* data_start = NULL;
-struct LinkedList* data_end = NULL;
-unsigned char transfer_finished = 'n';
+uint8_t sendBufferA[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t sendBufferB[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-uint8_t counter = 0;
+uint8_t receiveBufferA[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t receiveBufferB[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-static uint8_t count = 0;
-static uint8_t output[4] = {0, 0, 0, 0};
+uint8_t transmitting = 0; // Global flag for transmission
 
+void clearSendBuffer(char buffer) {
+    if (buffer == 'A') {
+        memset(sendBufferA, 0, sizeof(sendBufferA));
+    } else {
+        memset(sendBufferB, 0, sizeof(sendBufferB));
+    }
+}
+
+void clearReceiveBuffer(char buffer) {
+    if (buffer == 'A') {
+        memset(receiveBufferA, 0, sizeof(receiveBufferA));
+    } else {
+        memset(receiveBufferB, 0, sizeof(receiveBufferB));
+    }
+}
+
+void singularizeAndSend(uint8_t data) {
+    uint8_t counterOne = 0;
+    uint8_t counterZero = 0;
+    static uint8_t binaryCounter = 0;
+
+    for (int bit = 7; bit >= 0; --bit) {
+        if (data & (1 << bit)) {
+            ++counterOne;
+        } else {
+            ++counterZero;
+        }
+
+        if ((counterOne + counterZero) >= 4) {
+            uint8_t tmp = (counterOne > counterZero) ? '1' : '0';
+            HAL_UART_Transmit(&huart3, &tmp, 1, HAL_MAX_DELAY);
+            counterOne = 0;
+            counterZero = 0;
+            ++binaryCounter;
+        }
+    }
+
+    if (binaryCounter >= 8) {
+        binaryCounter = 0;
+        HAL_UART_Transmit(&huart3, &SPACE, 1, HAL_MAX_DELAY);
+    }
+}
+
+void quadrupleAndTransmit(uint8_t val) {
+    static uint8_t counterA = 0;
+    static uint8_t counterB = 0;
+    static char activeBuffer = 'A';
+
+    if (val == '1' || val == '0') {
+        uint8_t bitPosition = (activeBuffer == 'A' ? counterA : counterB) % 2 == 0 ? 4 : 0;
+        uint8_t tmp = (val == '1') ? (0b00001111 << bitPosition) : 0;
+
+        if (activeBuffer == 'A') {
+            sendBufferA[counterA / 2] |= tmp;
+            ++counterA;
+            if (counterA >= 16) {
+                activeBuffer = 'B';
+                counterA = 0;
+                transmitting = 1; // Start transmitting
+            }
+        } else {
+            sendBufferB[counterB / 2] |= tmp;
+            ++counterB;
+            if (counterB >= 16) {
+                activeBuffer = 'A';
+                counterB = 0;
+                transmitting = 1; // Start transmitting
+            }
+        }
+    }
+}
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART2) {
-        output[count] = rcv2[0];
-        count += 1;
-        if (count > 3) {
-            uint8_t decoded = QuadruplicationDecode(output);
-            HAL_UART_Transmit(&huart3, &decoded, 1, HAL_MAX_DELAY);
-            for (size_t i = 0; i < count; i++)
-            {
-                output[i] = 0;
-            }
-            count = 0;
-        }
+        singularizeAndSend(rcv2[0]);
 
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart2, rcv2, 1); // Restart the interrupt
     } else if (huart->Instance == USART3) {
-        // HAL_UART_Transmit(&huart2, rcv3, 1, HAL_MAX_DELAY);
-
-        if (rcv3[0] == '\r') {
-            transfer_finished = 'y';
-        } else {
-            insertAtEnd(rcv3[0], &data_start, &data_end);
-        }
-
+        quadrupleAndTransmit(rcv3[0]);
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0); // Toggle LED to signal character reception
         HAL_UART_Receive_IT(&huart3, rcv3, 1); // Restart the interrupt
     }
@@ -68,26 +121,37 @@ int main(void) {
 
     BSP_LED_Init(LED2);
 
-    data_start = NULL;
-    data_end = NULL;
-
     HAL_UART_Receive_IT(&huart2, rcv2, 1); // Start UART receive interrupt
     HAL_UART_Receive_IT(&huart3, rcv3, 1); // Start UART receive interrupt
 
+    uint8_t bufferA_index = 0;
+    uint8_t bufferB_index = 0;
+    char currentBuffer = 'A';
+
     while (1) {
-        if (transfer_finished == 'y') {
-            struct LinkedList *tmp = data_end;
-            
-            while (tmp != NULL) {
-                QuadruplicationEncode(tmp);
-                tmp = tmp->prev;
+        BSP_LED_On(LED2);
+        //HAL_Delay(100); // Keep the CPU active
+
+        if (transmitting) {
+            if (currentBuffer == 'A' && bufferA_index < 8) {
+                HAL_UART_Transmit(&huart2, &sendBufferA[bufferA_index++], 1, HAL_MAX_DELAY);
+                HAL_Delay(1); // 1ms delay between bytes
+                if (bufferA_index >= 8) {
+                    bufferA_index = 0;
+                    currentBuffer = 'B';
+                    clearSendBuffer('A');
+                    transmitting = 0;
+                }
+            } else if (currentBuffer == 'B' && bufferB_index < 8) {
+                HAL_UART_Transmit(&huart2, &sendBufferB[bufferB_index++], 1, HAL_MAX_DELAY);
+                HAL_Delay(1); // 1ms delay between bytes
+                if (bufferB_index >= 8) {
+                    bufferB_index = 0;
+                    currentBuffer = 'A';
+                    clearSendBuffer('B');
+                    transmitting = 0;
+                }
             }
-            reTransferData(data_start, &huart2);
-            
-            transfer_finished = 'n';
-        } else {
-            HAL_Delay(100); //Keep the CPU active
-            BSP_LED_Toggle(LED2);
         }
     }
 }
